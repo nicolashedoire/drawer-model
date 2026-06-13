@@ -26,14 +26,18 @@ from draw_live import draw_program_live
 W, H = 1000, 640
 
 
-def cat_lines(src, target_w=620, sigma=1.5, k=1.6, p=20.0, eps=0.58, phi=15.0, min_len=22):
+def cat_lines(src, simple=False, target_w=620, k=1.6, p=20.0, eps=0.58, phi=15.0):
+    sigma = 2.8 if simple else 1.5
+    min_len = 130 if simple else 22                          # ne garder que les longues lignes
+    bilat = (15, 0.35, 15) if simple else (7, 0.12, 6)       # gros lissage de la fourrure
+    dp = 3.2 if simple else 1.0                              # polylignes plus lisses
     im = ImageOps.autocontrast(Image.open(src).convert("L"))
     iw, ih = im.size
     nw = target_w; nh = int(ih * nw / iw)
     if nh > H - 20:
         nh = H - 20; nw = int(iw * nh / ih)
     g = np.asarray(im.resize((nw, nh)), np.float32) / 255.0
-    g = cv2.bilateralFilter(g, 7, 0.12, 6)                    # lisse la fourrure, garde les bords
+    g = cv2.bilateralFilter(g, bilat[0], bilat[1], bilat[2])
     g1 = cv2.GaussianBlur(g, (0, 0), sigma)
     g2 = cv2.GaussianBlur(g, (0, 0), sigma * k)
     u = (1 + p) * g1 - p * g2
@@ -46,7 +50,7 @@ def cat_lines(src, target_w=620, sigma=1.5, k=1.6, p=20.0, eps=0.58, phi=15.0, m
     for c in cnts:
         if cv2.arcLength(c, False) < min_len:
             continue
-        c2 = cv2.approxPolyDP(c, 1.0, False)
+        c2 = cv2.approxPolyDP(c, dp, False)
         pts = [[float(pt[0][0] + x0), float(pt[0][1] + y0)] for pt in c2]
         if len(pts) >= 2:
             ops.append({"op": "polyline", "pts": pts, "close": False})
@@ -58,8 +62,9 @@ async def main():
     ap.add_argument("--src", default=str(OUT / "gen_cat2.png"))
     ap.add_argument("--live", action="store_true")
     ap.add_argument("--capture", action="store_true")
+    ap.add_argument("--simple", action="store_true")
     a = ap.parse_args()
-    ops, _ = cat_lines(a.src)
+    ops, _ = cat_lines(a.src, simple=a.simple)
     print(f"· dessin au trait : {len(ops)} lignes (XDoG, sans points)", flush=True)
 
     s = CDPSession(headless=not a.live, width=1040, height=730)
