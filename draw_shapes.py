@@ -165,14 +165,23 @@ def generate_lowpoly_shaded(poly, cell=28, jitter=6, seed=4, light=(0.72, 0.69))
                 level = max(0, min(2, round((shadow - 0.05) * 1.7)))
                 if level > 0:
                     ops += _hatch_tri(tri, spacing=max(5.4, 7.8 - level * 1.0))
+    ops.append({"op": "polyline", "pts": [list(p) for p in poly], "close": True})   # contour net par-dessus
     return ops
 
+
+FISH_SIL = [
+    (300, 320),                                       # museau
+    (350, 256), (460, 238), (560, 258),               # dos
+    (628, 286), (700, 250), (700, 392), (628, 356),   # queue (triangle)
+    (560, 384), (460, 404), (350, 386),               # ventre
+]
 
 GENERATORS = {
     "tree": generate_tree,
     "cat": generate_cat,
     "lowcat": lambda: generate_lowpoly(CAT_SIL, cell=26),
     "shcat": lambda: generate_lowpoly_shaded(CAT_SIL, cell=28),
+    "shfish": lambda: generate_lowpoly_shaded(FISH_SIL, cell=26, light=(0.2, 0.95)),
 }
 
 
