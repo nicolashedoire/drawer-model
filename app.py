@@ -161,6 +161,7 @@ class H(BaseHTTPRequestHandler):
 
     def do_GET(self):
         self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
         self.end_headers(); self.wfile.write(PAGE.encode())
 
     def do_POST(self):
