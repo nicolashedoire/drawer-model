@@ -7,7 +7,7 @@ technique (lignes / pointillisme / portrait), tu cliques Dessiner :
   2) il en extrait un programme de traits (la technique choisie)
   3) la page anime le tracé sur la toile, comme s'il dessinait.
 
-  python3 app.py            # puis ouvre http://127.0.0.1:8765
+  python3 app.py            # puis ouvre http://127.0.0.1:8787
 """
 from __future__ import annotations
 
@@ -15,9 +15,6 @@ import base64
 import io
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
-
-from PIL import Image
 
 from draw_lab import OUT
 from draw_figure import op_to_points
@@ -46,7 +43,7 @@ def get_pipe():
 
 def generate(prompt, style, seed=7):
     import torch
-    full = STYLES.get(style, STYLES["cartoon"]).format(s=prompt.strip() or "cat")
+    full = STYLES.get(style, STYLES["cartoon"]).format(s=(prompt or "").strip() or "cat")
     g = torch.Generator(device="cpu").manual_seed(int(seed))
     return get_pipe()(prompt=full, num_inference_steps=4, guidance_scale=0.0,
                       generator=g, height=512, width=512).images[0]
@@ -65,67 +62,96 @@ def compute_strokes(technique, path, simple):
     return [[[round(float(x), 1), round(float(y), 1)] for (x, y) in op_to_points(op)] for op in ops]
 
 
-PAGE = """<!doctype html><html><head><meta charset=utf-8><title>drawer</title>
+PAGE = r"""<!doctype html><html lang=fr><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><title>Drawer</title>
 <style>
- body{margin:0;font:15px -apple-system,Segoe UI,sans-serif;background:#f4f4f6;color:#1a1a1a}
- header{padding:14px 18px;background:#fff;border-bottom:1px solid #e3e3e8;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
- input,select,button{font:inherit;padding:8px 10px;border:1px solid #ccc;border-radius:8px;background:#fff}
- #prompt{flex:1;min-width:240px}
- button{background:#1a1a1a;color:#fff;border:0;cursor:pointer;font-weight:600;padding:9px 18px}
- button:disabled{opacity:.5;cursor:default}
- label{font-size:13px;color:#555;display:flex;flex-direction:column;gap:3px}
- main{display:flex;gap:18px;padding:18px;align-items:flex-start;flex-wrap:wrap}
- .panel{background:#fff;border:1px solid #e3e3e8;border-radius:12px;padding:12px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
- .ttl{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:#888;margin-bottom:8px}
- #canvas{width:680px;height:435px;background:#fff;border:1px solid #eee;border-radius:6px}
- #ref{width:280px;height:280px;object-fit:contain;background:#fafafa;border:1px solid #eee;border-radius:6px}
- #status{font-size:13px;color:#666;margin-left:auto}
+ *{box-sizing:border-box}
+ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+   background:radial-gradient(1200px 600px at 70% -10%,#eef1ff,transparent),linear-gradient(180deg,#f7f8fb,#eceef4);
+   color:#1b1b22;min-height:100vh}
+ .wrap{max-width:1200px;margin:0 auto;padding:34px 24px 48px}
+ h1{font-size:24px;margin:0;font-weight:800;letter-spacing:-.02em}
+ .sub{color:#7c7c88;font-size:14px;margin:4px 0 22px}
+ .bar{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;background:rgba(255,255,255,.85);
+   backdrop-filter:blur(8px);padding:18px;border-radius:18px;box-shadow:0 8px 30px rgba(30,30,60,.08);
+   border:1px solid rgba(255,255,255,.7);margin-bottom:22px}
+ .fld{display:flex;flex-direction:column;gap:6px}
+ .fld.grow{flex:1;min-width:240px}
+ .fld label{font-size:11px;font-weight:700;color:#9a9aa6;text-transform:uppercase;letter-spacing:.06em}
+ input,select{font-size:15px;font-family:inherit;padding:12px 13px;border:1.5px solid #e6e6ee;border-radius:12px;
+   background:#fbfbfe;transition:border .15s,box-shadow .15s;color:#1b1b22}
+ input:focus,select:focus{outline:0;border-color:#6366f1;background:#fff;box-shadow:0 0 0 4px rgba(99,102,241,.12)}
+ button{font-size:15px;font-family:inherit;font-weight:700;padding:13px 26px;border:0;border-radius:12px;
+   background:linear-gradient(180deg,#7376f6,#5b5ef0);color:#fff;cursor:pointer;box-shadow:0 6px 16px rgba(91,94,240,.35);transition:.15s}
+ button:hover{transform:translateY(-1px);box-shadow:0 9px 22px rgba(91,94,240,.45)}
+ button:disabled{opacity:.55;cursor:default;transform:none;box-shadow:none}
+ .row{display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap}
+ .card{background:#fff;border-radius:18px;padding:18px;box-shadow:0 8px 30px rgba(30,30,60,.07);border:1px solid #f0f0f5}
+ .card .h{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#a6a6b2;margin-bottom:14px}
+ #canvas{width:720px;max-width:100%;aspect-ratio:1000/640;background:#fff;border-radius:12px;border:1px solid #eee;display:block}
+ .ref-box{width:300px;height:300px;border-radius:12px;border:1px solid #eee;background:#f6f6fa;
+   display:flex;align-items:center;justify-content:center;overflow:hidden}
+ .ref-box img{width:100%;height:100%;object-fit:contain}
+ .ref-box .ph{color:#bcbcc8;font-size:13px;padding:0 20px;text-align:center}
+ .status{margin-top:14px;font-size:13px;color:#83838f;min-height:18px}
+ .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#5b5ef0;margin-right:7px;vertical-align:middle;animation:pulse 1s infinite}
+ @keyframes pulse{0%,100%{opacity:.3}50%{opacity:1}}
 </style></head><body>
-<header>
- <input id=prompt placeholder="que veux-tu que je dessine ? (ex: un renard, un hibou...)" value="un chat">
- <label>style<select id=style><option value=cartoon>cartoon (simple)</option><option value=realistic>réaliste</option><option value=minimal>minimaliste</option></select></label>
- <label>technique<select id=tech><option value=lines>lignes</option><option value=stipple>pointillisme</option><option value=portrait>portrait (lignes+tons)</option></select></label>
- <label>épuré<select id=simple><option value=0>non</option><option value=1>oui</option></select></label>
- <button id=go>Dessiner</button>
- <span id=status>prêt</span>
-</header>
-<main>
- <div class=panel><div class=ttl>Dessin</div><canvas id=canvas width=1000 height=640></canvas></div>
- <div class=panel><div class=ttl>Inspiration (image générée)</div><img id=ref alt="(l'image apparaîtra ici)"></div>
-</main>
+<div class=wrap>
+ <h1>🎨 Drawer</h1>
+ <div class=sub>Tape un sujet, choisis le style et la technique — je l'imagine puis je le dessine, à la main.</div>
+ <div class=bar>
+  <div class="fld grow"><label>Sujet</label><input id=prompt value="un chat" placeholder="un renard, un hibou, une maison…"></div>
+  <div class=fld><label>Style</label><select id=style>
+   <option value=cartoon>Cartoon (simple)</option><option value=realistic>Réaliste</option><option value=minimal>Minimaliste</option></select></div>
+  <div class=fld><label>Technique</label><select id=tech>
+   <option value=lines>Lignes</option><option value=stipple>Pointillisme</option><option value=portrait>Portrait (lignes+tons)</option></select></div>
+  <div class=fld><label>Épuré</label><select id=simple><option value=0>Non</option><option value=1>Oui</option></select></div>
+  <div class=fld><label>&nbsp;</label><button id=go>Dessiner</button></div>
+ </div>
+ <div class=row>
+  <div class=card><div class=h>Dessin</div><canvas id=canvas width=1000 height=640></canvas><div class=status id=status>Prêt.</div></div>
+  <div class=card><div class=h>Inspiration · image générée</div>
+   <div class=ref-box id=refbox><div class=ph>L'image générée apparaîtra ici</div></div></div>
+ </div>
+</div>
 <script>
-const C=document.getElementById('canvas'),X=C.getContext('2d');
-function clear(){X.fillStyle='#fff';X.fillRect(0,0,C.width,C.height);}
-clear();
-const st=document.getElementById('status'),go=document.getElementById('go');
+const $=id=>document.getElementById(id);
+const C=$('canvas'),X=C.getContext('2d');
+function clr(){X.fillStyle='#fff';X.fillRect(0,0,C.width,C.height);}
+clr();
 let anim=null;
 function animate(strokes){
  if(anim)cancelAnimationFrame(anim);
- clear();X.strokeStyle='#111';X.lineWidth=1.6;X.lineJoin='round';X.lineCap='round';
- let i=0;const per=Math.max(4,Math.floor(strokes.length/240));
- function frame(){
+ clr();X.strokeStyle='#141414';X.lineWidth=1.7;X.lineJoin='round';X.lineCap='round';
+ let i=0;const per=Math.max(3,Math.floor(strokes.length/260));
+ (function frame(){
   for(let k=0;k<per&&i<strokes.length;k++,i++){
-   const s=strokes[i];if(s.length<2)continue;
+   const s=strokes[i];if(!s||s.length<2)continue;
    X.beginPath();X.moveTo(s[0][0],s[0][1]);
    for(let j=1;j<s.length;j++)X.lineTo(s[j][0],s[j][1]);
    X.stroke();
   }
-  st.textContent='dessin… '+i+'/'+strokes.length+' traits';
-  if(i<strokes.length){anim=requestAnimationFrame(frame);}else{st.textContent='✓ '+strokes.length+' traits';go.disabled=false;}
- }
- frame();
+  $('status').textContent='✎ tracé… '+i+' / '+strokes.length+' traits';
+  if(i<strokes.length)anim=requestAnimationFrame(frame);
+  else{$('status').textContent='✓ terminé — '+strokes.length+' traits';$('go').disabled=false;}
+ })();
 }
-go.onclick=async()=>{
- go.disabled=true;st.textContent='génération de l\\'image…';document.getElementById('ref').removeAttribute('src');
- const body={prompt:prompt.value,style:style.value,technique:tech.value,simple:simple.value==='1'};
+$('go').onclick=async()=>{
+ $('go').disabled=true;
+ $('status').innerHTML='<span class=dot></span>génération de l\'image…';
+ $('refbox').innerHTML='<div class=ph>génération…</div>';
+ const body={prompt:$('prompt').value,style:$('style').value,technique:$('tech').value,simple:$('simple').value==='1'};
  try{
   const r=await fetch('/draw',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const d=await r.json();
-  if(d.error){st.textContent='erreur: '+d.error;go.disabled=false;return;}
-  document.getElementById('ref').src=d.image;
-  st.textContent='tracé…';animate(d.strokes);
- }catch(e){st.textContent='erreur: '+e;go.disabled=false;}
+  if(d.error){$('status').textContent='⚠ '+d.error;$('go').disabled=false;return;}
+  $('refbox').innerHTML='<img src="'+d.image+'">';
+  $('status').innerHTML='<span class=dot></span>tracé…';
+  animate(d.strokes);
+ }catch(e){$('status').textContent='⚠ '+e;$('go').disabled=false;}
 };
+$('prompt').addEventListener('keydown',e=>{if(e.key==='Enter')$('go').click();});
 </script></body></html>"""
 
 
