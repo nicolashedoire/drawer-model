@@ -120,10 +120,59 @@ CAT_SIL = [
     (416, 264), (402, 202),                     # tête gauche
 ]
 
+def _hatch_tri(tri, spacing, ang=0.6):
+    dx, dy = math.cos(ang), math.sin(ang)
+    nx, ny = -dy, dx
+    projs = [v[0] * nx + v[1] * ny for v in tri]
+    lo, hi = min(projs), max(projs)
+    edges = [(tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])]
+    ops, t = [], lo + spacing
+    while t < hi:
+        hits = []
+        for a, b in edges:
+            pa, pb = a[0] * nx + a[1] * ny, b[0] * nx + b[1] * ny
+            if (pa - t) * (pb - t) <= 0 and abs(pb - pa) > 1e-9:
+                u = (t - pa) / (pb - pa)
+                hits.append((a[0] + u * (b[0] - a[0]), a[1] + u * (b[1] - a[1])))
+        if len(hits) >= 2:
+            ops.append({"op": "line", "a": [hits[0][0], hits[0][1]], "b": [hits[1][0], hits[1][1]]})
+        t += spacing
+    return ops
+
+
+def generate_lowpoly_shaded(poly, cell=28, jitter=6, seed=4, light=(0.72, 0.69)):
+    rng = random.Random(seed)
+    xs = [p[0] for p in poly]; ys = [p[1] for p in poly]
+    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+    cxs, cys = (x0 + x1) / 2, (y0 + y1) / 2
+    cols, rows = int((x1 - x0) / cell) + 3, int((y1 - y0) / cell) + 3
+    pts = {(r, c): (x0 - cell + c * cell + rng.uniform(-jitter, jitter),
+                    y0 - cell + r * cell + rng.uniform(-jitter, jitter))
+           for r in range(rows) for c in range(cols)}
+    ops = []
+    for r in range(rows - 1):
+        for c in range(cols - 1):
+            a, b, d, e = pts[(r, c)], pts[(r, c + 1)], pts[(r + 1, c)], pts[(r + 1, c + 1)]
+            for tri in ((a, b, e), (a, e, d)):
+                gx = (tri[0][0] + tri[1][0] + tri[2][0]) / 3
+                gy = (tri[0][1] + tri[1][1] + tri[2][1]) / 3
+                if not _in_poly(gx, gy, poly):
+                    continue
+                ops.append({"op": "polyline", "pts": [list(tri[0]), list(tri[1]), list(tri[2])], "close": True})
+                vx, vy = gx - cxs, gy - cys
+                vl = math.hypot(vx, vy) or 1
+                shadow = (vx / vl) * light[0] + (vy / vl) * light[1]    # -1 (lumière) .. 1 (ombre)
+                level = max(0, min(2, round((shadow - 0.05) * 1.7)))
+                if level > 0:
+                    ops += _hatch_tri(tri, spacing=max(5.4, 7.8 - level * 1.0))
+    return ops
+
+
 GENERATORS = {
     "tree": generate_tree,
     "cat": generate_cat,
     "lowcat": lambda: generate_lowpoly(CAT_SIL, cell=26),
+    "shcat": lambda: generate_lowpoly_shaded(CAT_SIL, cell=28),
 }
 
 
