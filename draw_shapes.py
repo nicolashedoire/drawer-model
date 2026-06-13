@@ -49,7 +49,82 @@ def generate_tree(seed=3):
     return ops
 
 
-GENERATORS = {"tree": generate_tree}
+def generate_cat(seed=5):
+    from draw_now import CAT as _CAT
+    rng = random.Random(seed)
+    ops = list(_CAT[:-3])                                   # contour lisse (sans rayures)
+    cx, cy, rx, ry = 500, 428, 112, 116                    # fourrure du corps : touches vers le bas
+    for _ in range(230):
+        t = rng.uniform(0, 6.283); rr = math.sqrt(rng.uniform(0, 1))
+        x, y = cx + rx * rr * math.cos(t), cy + ry * rr * math.sin(t)
+        if y < 314:
+            continue
+        ang = math.pi / 2 + rng.uniform(-0.5, 0.5)
+        L = rng.uniform(8, 16)
+        ops.append({"op": "line", "a": [x, y], "b": [x + L * math.cos(ang), y + L * math.sin(ang)]})
+    hx, hy, hr = 500, 206, 100                              # fourrure des joues (bas de la tête)
+    for _ in range(90):
+        t = rng.uniform(0.2, 2.94); rr = rng.uniform(0.72, 1.0)
+        x, y = hx + hr * rr * math.cos(t), hy + hr * rr * math.sin(t)
+        ang = math.atan2(y - hy, x - hx) + rng.uniform(-0.3, 0.3)
+        L = rng.uniform(6, 12)
+        ops.append({"op": "line", "a": [x, y], "b": [x + L * math.cos(ang), y + L * math.sin(ang)]})
+    return ops
+
+
+def _in_poly(x, y, poly):
+    inside = False
+    n = len(poly); j = n - 1
+    for i in range(n):
+        xi, yi = poly[i]; xj, yj = poly[j]
+        if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi + 1e-9) + xi):
+            inside = not inside
+        j = i
+    return inside
+
+
+def generate_lowpoly(poly, cell=30, jitter=7, seed=4):
+    """Maille de petits triangles remplissant la silhouette (low-poly)."""
+    rng = random.Random(seed)
+    xs = [p[0] for p in poly]; ys = [p[1] for p in poly]
+    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+    cols = int((x1 - x0) / cell) + 3
+    rows = int((y1 - y0) / cell) + 3
+    pts = {}
+    for r in range(rows):
+        for c in range(cols):
+            pts[(r, c)] = (x0 - cell + c * cell + rng.uniform(-jitter, jitter),
+                           y0 - cell + r * cell + rng.uniform(-jitter, jitter))
+    ops = []
+    for r in range(rows - 1):
+        for c in range(cols - 1):
+            a, b = pts[(r, c)], pts[(r, c + 1)]
+            d, e = pts[(r + 1, c)], pts[(r + 1, c + 1)]
+            for tri in ((a, b, e), (a, e, d)):
+                gx = (tri[0][0] + tri[1][0] + tri[2][0]) / 3
+                gy = (tri[0][1] + tri[1][1] + tri[2][1]) / 3
+                if _in_poly(gx, gy, poly):
+                    ops.append({"op": "polyline", "pts": [list(tri[0]), list(tri[1]), list(tri[2])], "close": True})
+    return ops
+
+
+CAT_SIL = [
+    (430, 150), (412, 52), (472, 118),          # oreille gauche (pointue)
+    (500, 104),                                 # creux du sommet
+    (528, 118), (588, 52), (570, 150),          # oreille droite
+    (598, 202), (584, 264),                     # tête droite
+    (558, 288),                                 # cou pincé droite
+    (628, 362), (638, 472), (596, 538), (540, 556),   # corps droit → bas
+    (460, 556), (404, 538), (362, 472), (372, 362),   # bas → corps gauche
+    (442, 288),                                 # cou pincé gauche
+    (416, 264), (402, 202),                     # tête gauche
+]
+
+GENERATORS = {
+    "tree": generate_tree,
+    "cat": generate_cat,
+    "lowcat": lambda: generate_lowpoly(CAT_SIL, cell=26),
+}
 
 
 async def capture(prog, name, s):
