@@ -71,6 +71,14 @@
     window.__size = function () { return [cv.width, cv.height]; };
     const cap = document.getElementById('cap');
     window.__caption = function (t) { cap.textContent = t || ''; return true; };
+    window.__bg = function (durl, alpha, bx, by, bw, bh) {
+      return new Promise(function (res) {
+        const im = new Image();
+        im.onload = function () { ctx.save(); ctx.globalAlpha = alpha; ctx.drawImage(im, bx, by, bw, bh); ctx.restore(); res(true); };
+        im.onerror = function () { res(false); };
+        im.src = durl;
+      });
+    };
     // Flat [x0,y0,x1,y1,...] of dark (painted) pixels, sampled every `step` px.
     window.__paintedPixels = function (step) {
       step = step || 1;
