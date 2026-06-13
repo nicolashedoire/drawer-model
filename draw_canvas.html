@@ -1,0 +1,92 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>draw-lab canvas</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: #fff; overflow: hidden; }
+    #c { display: block; background: #fff; cursor: crosshair; }
+  </style>
+</head>
+<body>
+  <canvas id="c" width="1000" height="640"></canvas>
+  <div id="pen" style="position:absolute;left:0;top:0;width:14px;height:14px;border-radius:50%;
+       background:rgba(225,30,30,.9);box-shadow:0 0 6px rgba(225,30,30,.6);
+       transform:translate(-50%,-50%);pointer-events:none;display:none;z-index:10;"></div>
+  <div id="cap" style="position:absolute;left:18px;bottom:14px;right:18px;
+       font:600 22px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#1a1a1a;
+       pointer-events:none;z-index:9;"></div>
+  <script>
+    // Deterministic drawing surface for the motor-skill certifier.
+    // Driven by synthetic CDP mouse events; exposes pixel readback for verification.
+    const cv = document.getElementById('c');
+    const ctx = cv.getContext('2d', { willReadFrequently: true });
+    ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#000';
+    const pen = document.getElementById('pen');
+    let penOn = false;
+    window.__penShow = function (on) { penOn = !!on; pen.style.display = penOn ? 'block' : 'none'; return true; };
+    function movePen(x, y) { if (penOn) { pen.style.left = x + 'px'; pen.style.top = y + 'px'; } }
+
+    let drawing = false;
+    let curStroke = null;
+    window.__strokes = [];   // actual pointer points received, per stroke
+
+    function pos(e) {
+      const r = cv.getBoundingClientRect();
+      return [e.clientX - r.left, e.clientY - r.top];
+    }
+    cv.addEventListener('mousedown', e => {
+      drawing = true;
+      const [x, y] = pos(e);
+      curStroke = [[x, y]];
+      ctx.beginPath(); ctx.moveTo(x, y);
+      // a single press should leave a dot
+      ctx.lineTo(x + 0.01, y + 0.01); ctx.stroke();
+      movePen(x, y);
+    });
+    cv.addEventListener('mousemove', e => {
+      const [x, y] = pos(e);
+      movePen(x, y);
+      if (!drawing) return;
+      ctx.lineTo(x, y); ctx.stroke();
+      curStroke.push([x, y]);
+    });
+    window.addEventListener('mouseup', () => {
+      if (!drawing) return;
+      drawing = false;
+      if (curStroke) { window.__strokes.push(curStroke); curStroke = null; }
+    });
+
+    window.__clear = function () {
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+      window.__strokes = [];
+      return true;
+    };
+    window.__setPen = function (w, color) {
+      ctx.lineWidth = w || 3; ctx.strokeStyle = color || '#000';
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      return true;
+    };
+    window.__size = function () { return [cv.width, cv.height]; };
+    const cap = document.getElementById('cap');
+    window.__caption = function (t) { cap.textContent = t || ''; return true; };
+    // Flat [x0,y0,x1,y1,...] of dark (painted) pixels, sampled every `step` px.
+    window.__paintedPixels = function (step) {
+      step = step || 1;
+      const img = ctx.getImageData(0, 0, cv.width, cv.height).data;
+      const out = [];
+      for (let y = 0; y < cv.height; y += step) {
+        for (let x = 0; x < cv.width; x += step) {
+          const i = (y * cv.width + x) * 4;
+          const a = img[i + 3];
+          if (a > 10 && (img[i] + img[i + 1] + img[i + 2]) / 3 < 128) { out.push(x, y); }
+        }
+      }
+      return out;
+    };
+    window.__clear();
+    window.__ready = true;
+  </script>
+</body>
+</html>
