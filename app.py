@@ -85,6 +85,8 @@ PAGE = r"""<!doctype html><html lang=fr><head><meta charset=utf-8>
    background:linear-gradient(180deg,#7376f6,#5b5ef0);color:#fff;cursor:pointer;box-shadow:0 6px 16px rgba(91,94,240,.35);transition:.15s}
  button:hover{transform:translateY(-1px);box-shadow:0 9px 22px rgba(91,94,240,.45)}
  button:disabled{opacity:.55;cursor:default;transform:none;box-shadow:none}
+ button.ghost{background:#fff;color:#5b5ef0;border:1.5px solid #dcdcf3;box-shadow:none}
+ button.ghost:hover{background:#f2f2ff;transform:none;box-shadow:none}
  .row{display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap}
  .card{background:#fff;border-radius:18px;padding:18px;box-shadow:0 8px 30px rgba(30,30,60,.07);border:1px solid #f0f0f5}
  .card .h{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#a6a6b2;margin-bottom:14px}
@@ -107,7 +109,10 @@ PAGE = r"""<!doctype html><html lang=fr><head><meta charset=utf-8>
   <div class=fld><label>Technique</label><select id=tech>
    <option value=lines>Lignes</option><option value=stipple>Pointillisme</option><option value=portrait>Portrait (lignes+tons)</option></select></div>
   <div class=fld><label>Épuré</label><select id=simple><option value=0>Non</option><option value=1>Oui</option></select></div>
+  <div class=fld><label>Trait</label><select id=pen><option value=1.2>Fin</option><option value=1.7 selected>Moyen</option><option value=2.6>Épais</option></select></div>
   <div class=fld><label>&nbsp;</label><button id=go>Dessiner</button></div>
+  <div class=fld><label>&nbsp;</label><button id=png class=ghost disabled>↓ PNG</button></div>
+  <div class=fld><label>&nbsp;</label><button id=svg class=ghost disabled>↓ SVG</button></div>
  </div>
  <div class=row>
   <div class=card><div class=h>Dessin</div><canvas id=canvas width=1000 height=640></canvas><div class=status id=status>Prêt.</div></div>
@@ -118,27 +123,34 @@ PAGE = r"""<!doctype html><html lang=fr><head><meta charset=utf-8>
 <script>
 const $=id=>document.getElementById(id);
 const C=$('canvas'),X=C.getContext('2d');
+let anim=null,lastStrokes=null;
+const penW=()=>parseFloat($('pen').value);
 function clr(){X.fillStyle='#fff';X.fillRect(0,0,C.width,C.height);}
 clr();
-let anim=null;
+function redraw(){
+ clr();if(!lastStrokes)return;
+ X.strokeStyle='#141414';X.lineWidth=penW();X.lineJoin='round';X.lineCap='round';
+ for(const s of lastStrokes){if(!s||s.length<2)continue;
+  X.beginPath();X.moveTo(s[0][0],s[0][1]);for(let j=1;j<s.length;j++)X.lineTo(s[j][0],s[j][1]);X.stroke();}
+}
 function animate(strokes){
  if(anim)cancelAnimationFrame(anim);
- clr();X.strokeStyle='#141414';X.lineWidth=1.7;X.lineJoin='round';X.lineCap='round';
+ lastStrokes=strokes;clr();
+ X.strokeStyle='#141414';X.lineWidth=penW();X.lineJoin='round';X.lineCap='round';
  let i=0;const per=Math.max(3,Math.floor(strokes.length/260));
  (function frame(){
   for(let k=0;k<per&&i<strokes.length;k++,i++){
    const s=strokes[i];if(!s||s.length<2)continue;
-   X.beginPath();X.moveTo(s[0][0],s[0][1]);
-   for(let j=1;j<s.length;j++)X.lineTo(s[j][0],s[j][1]);
-   X.stroke();
+   X.beginPath();X.moveTo(s[0][0],s[0][1]);for(let j=1;j<s.length;j++)X.lineTo(s[j][0],s[j][1]);X.stroke();
   }
   $('status').textContent='✎ tracé… '+i+' / '+strokes.length+' traits';
   if(i<strokes.length)anim=requestAnimationFrame(frame);
-  else{$('status').textContent='✓ terminé — '+strokes.length+' traits';$('go').disabled=false;}
+  else{$('status').textContent='✓ terminé — '+strokes.length+' traits';$('go').disabled=false;$('png').disabled=false;$('svg').disabled=false;}
  })();
 }
+$('pen').onchange=redraw;
 $('go').onclick=async()=>{
- $('go').disabled=true;
+ $('go').disabled=true;$('png').disabled=true;$('svg').disabled=true;
  $('status').innerHTML='<span class=dot></span>génération de l\'image…';
  $('refbox').innerHTML='<div class=ph>génération…</div>';
  const body={prompt:$('prompt').value,style:$('style').value,technique:$('tech').value,simple:$('simple').value==='1'};
@@ -147,9 +159,16 @@ $('go').onclick=async()=>{
   const d=await r.json();
   if(d.error){$('status').textContent='⚠ '+d.error;$('go').disabled=false;return;}
   $('refbox').innerHTML='<img src="'+d.image+'">';
-  $('status').innerHTML='<span class=dot></span>tracé…';
-  animate(d.strokes);
+  $('status').innerHTML='<span class=dot></span>tracé…';animate(d.strokes);
  }catch(e){$('status').textContent='⚠ '+e;$('go').disabled=false;}
+};
+function dl(href,name){const a=document.createElement('a');a.href=href;a.download=name;a.click();}
+$('png').onclick=()=>dl(C.toDataURL('image/png'),'dessin.png');
+$('svg').onclick=()=>{
+ let p='<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="640" viewBox="0 0 1000 640"><rect width="1000" height="640" fill="#fff"/>';
+ for(const s of (lastStrokes||[])){if(!s||s.length<2)continue;
+  p+='<polyline fill="none" stroke="#141414" stroke-width="'+penW()+'" stroke-linejoin="round" stroke-linecap="round" points="'+s.map(q=>q[0]+','+q[1]).join(' ')+'"/>';}
+ p+='</svg>';dl('data:image/svg+xml;charset=utf-8,'+encodeURIComponent(p),'dessin.svg');
 };
 $('prompt').addEventListener('keydown',e=>{if(e.key==='Enter')$('go').click();});
 </script></body></html>"""
