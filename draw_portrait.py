@@ -82,7 +82,10 @@ async def main():
     ap.add_argument("--live", action="store_true")
     ap.add_argument("--capture", action="store_true")
     ap.add_argument("--over", action="store_true")
+    ap.add_argument("--src", default=None)
     a = ap.parse_args()
+    if a.src:
+        globals()["SRC"] = a.src
     n = 1400 if a.live else 2600
     print(f"· portrait combiné : stipple({n}) + XDoG…", flush=True)
     ops = portrait_ops(n)
